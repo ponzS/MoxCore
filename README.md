@@ -31,16 +31,20 @@ cd ui && pnpm dev:all
 
 ### 项目文件夹结构
 
-Core
-├── models // 模型管理模块
-│   ├── api    //API模式
-│   ├── aibox  //算力仓模式
-├── skills  //技能模块，兼容openclaw技能商店扩展
-├── extensions  //扩展模块，兼容openclaw插件扩展商店扩展
-├── server  //服务端模块，负责Agent功能和工具调用等核心逻辑
-├── api  //API模块，这里整理所有的API接口
-├── tools  //通用工具模块
-├── docs  //文档模块
-├── ui  //UI模块
-│   ├── /src/components/AiChat  //对话模块，负责展示与接收用户输入
-│   ├── /src/components/AiModelManager  //模型配置模块，负责展示与配置模型参数
+```text
+Core/
+├── models                     模型管理模块
+│   ├── api                    API模式
+│   └── aibox                  算力仓模式
+├── skills                     技能模块，兼容 openclaw 技能商店扩展
+├── extensions                 扩展模块，兼容 openclaw 插件扩展商店扩展
+├── server                     服务端模块，负责 Agent 功能和工具调用等核心逻辑
+├── api                        API 模块，这里整理所有的 API 接口
+├── tools                      通用工具模块
+├── docs                       文档模块
+└── ui                         UI 模块
+    └── src
+        └── components
+            ├── AiChat         对话模块，负责展示与接收用户输入
+            └── AiModelManager 模型配置模块，负责展示与配置模型参数
+```
