@@ -40,10 +40,18 @@ function truncate(text: string, limit: number) {
 }
 
 async function getBrowser(options?: BrowserOptions, context?: AgentToolContext) {
-  if (systemBrowserPromise) return systemBrowserPromise
-  if (options?.useSystemBrowser || options?.cdpUrl || options?.systemBrowserPath || options?.debugPort) {
-    systemBrowserPromise = connectSystemBrowser(options, context)
-    return systemBrowserPromise
+  const wantsSystem = Boolean(options?.useSystemBrowser || options?.cdpUrl || options?.systemBrowserPath || options?.debugPort)
+  if (wantsSystem) {
+    if (!systemBrowserPromise) {
+      systemBrowserPromise = connectSystemBrowser(options, context)
+    }
+    try {
+      return await systemBrowserPromise
+    } catch {
+      systemBrowserPromise = null
+      systemBrowserPromise = connectSystemBrowser(options, context)
+      return await systemBrowserPromise
+    }
   }
   if (!browserPromise) {
     browserPromise = launchBrowser(context)
@@ -61,6 +69,19 @@ async function launchBrowser(context?: AgentToolContext) {
     context?.emit?.('启动无头浏览器')
     return await chromium.launch({ headless: true })
   } catch {
+    const executable = await findSystemBrowserExecutable()
+    if (executable) {
+      context?.emit?.(`尝试使用系统浏览器执行文件：${executable}`)
+      try {
+        return await chromium.launch({
+          headless: true,
+          executablePath: executable,
+          args: ['--no-sandbox', '--disable-dev-shm-usage'],
+        })
+      } catch (e: any) {
+        context?.emit?.(`系统浏览器启动失败：${String(e?.message || e || '未知错误')}`)
+      }
+    }
     context?.emit?.('浏览器环境缺失，准备安装 chromium')
     await installBrowser(browsersPath, context)
     return chromium.launch({ headless: true })
@@ -198,6 +219,9 @@ async function browserSearchTool(args: Record<string, unknown>, context?: AgentT
   const limit = clampNumber(Number(args.limit || 5), 1, 20)
   const engines = normalizeEngines(args.engines)
   const options = parseBrowserOptions(args)
+  const headlessOptions = buildHeadlessOptions()
+  const systemOptions = buildSystemOptions(options)
+  const allowSystem = Boolean(options.useSystemBrowser || options.cdpUrl || options.systemBrowserPath || options.debugPort)
   const resultsByEngine: Record<string, Array<{ title: string; url: string; snippet: string }>> = {}
   const merged: Array<{ engine: string; title: string; url: string; snippet: string }> = []
   const steps: string[] = []
@@ -212,8 +236,31 @@ async function browserSearchTool(args: Record<string, unknown>, context?: AgentT
   step(`搜索引擎：${engines.join(', ')}`)
 
   for (const engine of engines) {
+    const remaining = limit - merged.length
+    if (remaining <= 0) {
+      step(`已获取足够结果：${merged.length} 条`)
+      break
+    }
     step(`开始搜索：${engine}`)
-    const results = await searchWithEngine(engine, query, limit, options, context)
+    let results: Array<{ title: string; url: string; snippet: string }>
+    try {
+      results = await searchWithEngine(engine, query, remaining, headlessOptions, context)
+    } catch (e: any) {
+      const message = String(e?.message || e || '未知错误')
+      if (allowSystem) {
+        step(`无头浏览器打不开了，尝试系统浏览器：${message}`)
+        try {
+          results = await searchWithEngine(engine, query, remaining, systemOptions, context)
+        } catch (systemError: any) {
+          const systemMessage = String(systemError?.message || systemError || '未知错误')
+          step(`被墙了，切换引擎：${systemMessage}`)
+          results = []
+        }
+      } else {
+        step(`被墙了，切换引擎：${message}`)
+        results = []
+      }
+    }
     resultsByEngine[engine] = results
     for (const item of results) {
       merged.push({ engine, ...item })
@@ -245,6 +292,8 @@ async function browserScrapeTool(args: Record<string, unknown>, context?: AgentT
   const linkLimit = clampNumber(Number(args.linkLimit || 20), 0, 100)
   const textLimit = clampNumber(Number(args.textLimit || 20000), 1000, 80000)
   const options = parseBrowserOptions(args)
+  const headlessOptions = buildHeadlessOptions()
+  const systemOptions = buildSystemOptions(options)
   const steps: string[] = []
   const step = (message: string) => {
     if (!message) return
@@ -253,31 +302,40 @@ async function browserScrapeTool(args: Record<string, unknown>, context?: AgentT
   }
   step(`访问页面：${url}`)
   step('开始提取正文与链接')
-  const payload = await withPage(async page => {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 })
-    await page.waitForLoadState('domcontentloaded').catch(() => {})
-    await page.waitForLoadState('load').catch(() => {})
-    await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {})
-    step(`页面加载完成：${page.url()}`)
-    const data = (await safeEvaluate(page, (maxLinks: number) => {
-      const title = String(document.title || '').trim()
-      const text = String(document.body?.innerText || '').trim()
-      const links = Array.from(document.querySelectorAll('a[href]'))
-        .map(el => ({
-          text: String(el.textContent || '').trim(),
-          url: String((el as HTMLAnchorElement).href || '').trim(),
-        }))
-        .filter(item => item.url)
-        .slice(0, maxLinks)
-      return { title, text, links }
-    }, linkLimit)) as { title: string; text: string; links: Array<{ text: string; url: string }> }
-    return {
-      url,
-      title: data.title,
-      text: truncate(data.text, textLimit),
-      links: data.links,
-    }
-  }, options, context)
+  const runScrape = (currentOptions: BrowserOptions) =>
+    withPage(async page => {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 })
+      await page.waitForLoadState('domcontentloaded').catch(() => {})
+      await page.waitForLoadState('load').catch(() => {})
+      await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {})
+      step(`页面加载完成：${page.url()}`)
+      const data = (await safeEvaluate(page, (maxLinks: number) => {
+        const title = String(document.title || '').trim()
+        const text = String(document.body?.innerText || '').trim()
+        const links = Array.from(document.querySelectorAll('a[href]'))
+          .map(el => ({
+            text: String(el.textContent || '').trim(),
+            url: String((el as HTMLAnchorElement).href || '').trim(),
+          }))
+          .filter(item => item.url)
+          .slice(0, maxLinks)
+        return { title, text, links }
+      }, linkLimit)) as { title: string; text: string; links: Array<{ text: string; url: string }> }
+      return {
+        url,
+        title: data.title,
+        text: truncate(data.text, textLimit),
+        links: data.links,
+      }
+    }, currentOptions, context)
+  let payload
+  try {
+    payload = await runScrape(headlessOptions)
+  } catch (e: any) {
+    const message = String(e?.message || e || '未知错误')
+    step(`无头浏览器失败，尝试系统浏览器：${message}`)
+    payload = await runScrape(systemOptions)
+  }
   const analysis = buildScrapeAnalysis(payload)
   return JSON.stringify({ ...payload, steps, analysis }, null, 2)
 }
@@ -388,15 +446,33 @@ async function searchWithEngine(
 }
 
 function parseBrowserOptions(args: Record<string, unknown>): BrowserOptions {
-  const useSystemBrowser = args.useSystemBrowser === false ? false : true
-  const cdpUrl = String(args.cdpUrl || '').trim() || undefined
-  const debugPort = Number.isFinite(Number(args.debugPort)) ? Number(args.debugPort) : undefined
-  const systemBrowserPath = String(args.systemBrowserPath || '').trim() || getDefaultSystemBrowserPath()
+  const useSystemBrowser = args.useSystemBrowser === true
+  const cdpUrl = useSystemBrowser ? String(args.cdpUrl || '').trim() || undefined : undefined
+  const debugPort = useSystemBrowser && Number.isFinite(Number(args.debugPort)) ? Number(args.debugPort) : undefined
+  const systemBrowserPath = useSystemBrowser ? String(args.systemBrowserPath || '').trim() || undefined : undefined
   return {
     useSystemBrowser,
     cdpUrl,
     debugPort,
     systemBrowserPath,
+  }
+}
+
+function buildHeadlessOptions() {
+  return {
+    useSystemBrowser: false,
+    cdpUrl: undefined,
+    debugPort: undefined,
+    systemBrowserPath: undefined,
+  }
+}
+
+function buildSystemOptions(options: BrowserOptions) {
+  return {
+    useSystemBrowser: true,
+    cdpUrl: options.cdpUrl,
+    debugPort: options.debugPort,
+    systemBrowserPath: options.systemBrowserPath || getDefaultSystemBrowserPath() || undefined,
   }
 }
 

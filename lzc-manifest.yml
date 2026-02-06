@@ -1,0 +1,38 @@
+name: Mox
+package: cloud.lazycat.app.mox
+version: 0.0.1
+description: 
+license: https://choosealicense.com/licenses/mit/
+homepage: 
+author: ponzS
+application:
+  subdomain: mox
+  upstreams:
+    - location: /api/ai/settings
+      backend: http://127.0.0.1:5177
+      backend_launch_command: /bin/sh /lzcapp/pkg/content/scripts/start-server.sh
+      disable_trim_location: true
+    - location: /api/ai/messages
+      backend: http://127.0.0.1:5177
+      disable_trim_location: true
+    - location: /api/ai/chat
+      backend: http://127.0.0.1:5177
+      disable_trim_location: true
+    - location: /api/ai/models
+      backend: http://127.0.0.1:5177
+      disable_trim_location: true
+    - location: /api/ai/skills
+      backend: http://127.0.0.1:5177
+      disable_trim_location: true
+    - location: /
+      backend: file:///lzcapp/pkg/content/
+locales:
+  zh:
+    name: "Mox"
+    description: "一个简单的AI Agent，支持懒猫微服算力仓和调用微服应用API"
+  zh_CN:
+    name: "Mox"
+    description: "一个简单的AI Agent，支持懒猫微服算力仓和调用微服应用API"
+  en:
+    name: "Mox"
+    description: "A simple AI agent that supports lazycat micro service compute warehouse and calling micro service application API"

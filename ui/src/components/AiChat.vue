@@ -73,7 +73,7 @@ onUnmounted(() => stopAutoScroll())
 <template>
   <section class="chat">
     <header class="header">
-      <div class="title"></div>
+      <div class="title"><div v-if="isRequesting" class="thinking">正在思考中…</div></div>
       <div class="meta">
         <div class="chip">{{ modeLabel }}</div>
         <div class="chip">Model: {{ activeModel || '-' }}</div>
@@ -135,7 +135,7 @@ onUnmounted(() => stopAutoScroll())
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%;
+  height: 100vh;
 }
 
 .header {
@@ -342,6 +342,7 @@ onUnmounted(() => stopAutoScroll())
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-bottom: 80px;
 }
 
 .input {
@@ -383,5 +384,12 @@ onUnmounted(() => stopAutoScroll())
   background: var(--vt-c-green);
   border-color: var(--vt-c-green);
   color: #fff;
+}
+
+@media (max-width: 980px) {
+  .composer {
+
+  margin-bottom: 220px;
+}
 }
 </style>

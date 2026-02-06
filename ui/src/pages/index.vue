@@ -6,7 +6,7 @@ import AiSkillList from '@/components/AiSkillList.vue'
 </script>
 
 <template>
-  <div class="page">
+  <!-- <div class="page">
     <section class="leftPane">
       <AiModelManager />
       <AiSkillList />
@@ -14,7 +14,11 @@ import AiSkillList from '@/components/AiSkillList.vue'
     <section class="rightPane">
       <AiChat />
     </section>
-  </div>
+  </div> -->
+     <!-- <div style="height: 100%;position:absolute;width: 100%;padding: 30px;">
+        <AiChat />
+        </div> -->
+         <AiChat />
 </template>
 
 <style scoped>

@@ -19,6 +19,10 @@ cd core && pnpm install
 cd ui && pnpm dev:all
 ```
 
+<!-- pnpm -C ui run type-check && 
+lzc-cli project build -->
+pnpm -C ui run type-check && pnpm -C core run build && lzc-cli project build
+
 ### 默认技能
 
 - 懒猫微服算力仓模式：默认支持懒猫微服算力仓的所有应用，无需额外配置。

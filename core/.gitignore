@@ -35,5 +35,11 @@ coverage
 # Vitest
 __screenshots__/
 
-demo/
+demo
+data
+extensions/browser/browsers
+extensions/browser/system-profile
+lib/node_modules
+
+
 
